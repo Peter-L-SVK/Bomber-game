@@ -3,20 +3,25 @@
 
 A terminal-based bombing game written in C using ncurses. Control a plane that drops bombs to destroy the city below!
 
+Written and teste on Fedora 42 Cinnamon.
+
 ![Gameplay Demo](demo.png) *(Bomber running)*
 
 ## Features
 - **Zig-zag bomber movement** with directional flipping
 - **Area-of-effect bombs** (3-block damage radius)
 - **Destructible city terrain**
+- **Score and player name tracking** with scorefile
 - **Smooth animations** with optimized rendering
 - **Score system** (10 points per block destroyed)
-- **Simple controls** (Space to bomb, Q to quit)
+- **Simple controls** (Down key to bomb, Space to shoot from machine gun, Q to quit)
+- **Help screen and pause** (H and P)
+- **Colored gameplay and scrolling qoutes**
 
 ## How to Play
 1. **Compile**:  
    ```bash
-   gcc -o bomber bomber.c -lncurses
+   make
    ```
 2. **Run**:  
    ```bash
@@ -24,6 +29,7 @@ A terminal-based bombing game written in C using ncurses. Control a plane that d
    ```
 3. **Controls**:  
    - `Space` = Drop bomb  
+   - `H` = Help screen  
    - `Q` = Quit game  
 
 ## Game Rules
@@ -33,6 +39,7 @@ A terminal-based bombing game written in C using ncurses. Control a plane that d
   - Moves left/right
   - Descends when hitting edges
   - Flips direction (`^==-` ↔ `-==^`)
+  - 17 bullets in magazine
 
 ## Customization
 Edit `bomber.c` to change:
@@ -43,6 +50,8 @@ int world[COLS]           // Modify city generation
 ```
 
 ## Dependencies
+- Unix-like OS (Linux,MacOS,FreeBSD)
+- fortune tool (comes preinstalled with all of Linux and FreeBSD)
 - `ncurses` library  
   Install with: 
   - Fedora: `sudo dnf install ncurses`
