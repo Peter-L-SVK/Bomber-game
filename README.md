@@ -58,3 +58,7 @@ int world[COLS]           // Modify city generation
   - Ubuntu: `sudo apt install libncurses-dev`
   - Mac: `brew install ncurses`
 
+## License
+
+MIT License - See [LICENSE](LICENSE) for details.
+
