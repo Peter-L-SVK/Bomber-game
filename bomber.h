@@ -16,7 +16,7 @@
 #include <unistd.h>
 #include <string.h>
  
-#define DAMAGE_RADIUS 2
+#define DAMAGE_RADIUS 3
 #define BOMB_KEY KEY_DOWN 
 #define PAUSE_KEY 'p'
 #define HELP_KEY 'h'

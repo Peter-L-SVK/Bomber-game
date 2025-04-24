@@ -11,6 +11,7 @@
 #include <stdlib.h>
 
 #define SCORE_FILE "bomber.scores"
+static int destruction_frame = 0;  // Shared between collision and gun handling
 
 void show_info_screen(const char* fortune_msg, int* scroll_pos) {
     flushinp();
@@ -399,21 +400,44 @@ void pause_game(const char* fortune_msg, int* scroll_pos) {
 }
 
 void handle_bomber_movement(int* bomber_x, int* bomber_y, int* bomber_dx, int* game_over, int* crash_reason, int world[]) {
+  if (destruction_frame > 0) {
+    destruction_frame--;
+    return; // Skip collision check this frame
+  }
+  
   *bomber_x += *bomber_dx;
+  
+  // Handle screen edge bouncing
   if (*bomber_x >= COLS - 4 || *bomber_x <= 0) {
     *bomber_dx *= -1;
     (*bomber_y)++;
   }
   
-  // Check for collision
-  int collision_x = (*bomber_dx > 0) ? *bomber_x + 3 : *bomber_x - 1;
-  if (collision_x >= 0 && collision_x < COLS && 
-      *bomber_y >= LINES - world[collision_x] - 1) {
-    *crash_reason = 1; // Building collision
-    *game_over = 1;
+  // Check for collision - more precise points based on bomber shape
+  int collision_points[6] = {
+    *bomber_x + (*bomber_dx > 0 ? 3 : 0),  // Front of bomber (direction-dependent)
+    *bomber_x + 1,                         // Left engine
+    *bomber_x + 2,                         // Cockpit
+    *bomber_x + 3,                         // Right engine
+    *bomber_x,                             // Nose
+    *bomber_x + 4                          // Tail
+  };
+  
+  for (int i = 0; i < 6; i++) {
+    int check_x = collision_points[i];
+    // Only check collision if the point is within screen bounds
+    if (check_x >= 0 && check_x < COLS) {
+      // Calculate the top of the building at this x position
+      int building_top = LINES - world[check_x] - 1;
+      // Check if bomber's y position is at or below building top
+      if (*bomber_y >= building_top  && world[check_x] > 0) {
+	*crash_reason = 1; // Building collision
+	*game_over = 1;
+	break;
+      }
+    }
   }
 }
-
 void handle_machine_gun(int* machine_gun_active, int* machine_gun_bullet_x, int* machine_gun_bullet_y, 
 			int* bullet_distance, int* machine_gun_direction, int world[], int* score) {
   if (!*machine_gun_active) return;
@@ -423,7 +447,7 @@ void handle_machine_gun(int* machine_gun_active, int* machine_gun_bullet_x, int*
     mvprintw(*machine_gun_bullet_y, *machine_gun_bullet_x, " ");
   }
   
-  // Move bullet forward by 2 positions for faster movement
+  // Move bullet forward
   *machine_gun_bullet_x += *machine_gun_direction * 2;
   *bullet_distance += 2;
   
@@ -440,42 +464,41 @@ void handle_machine_gun(int* machine_gun_active, int* machine_gun_bullet_x, int*
   
   // Check for hits or max range
   int hit_building = 0;
-  if (*machine_gun_bullet_x >= 0 && *machine_gun_bullet_x < COLS) {
-    int building_height = world[*machine_gun_bullet_x];
-    if (building_height > 0 && *machine_gun_bullet_y >= LINES - building_height - 1) {
+  int check_x = *machine_gun_bullet_x;
+  
+  // Handle edge cases
+  if (check_x < 0) check_x = 0;
+  if (check_x >= COLS) check_x = COLS - 1;
+  
+  // Check if bullet hit a building
+  if (check_x >= 0 && check_x < COLS) {
+    if (world[check_x] > 0 && *machine_gun_bullet_y >= LINES - world[check_x] - 1) {
       hit_building = 1;
     }
   }
   
-  if (*bullet_distance >= MACHINE_GUN_RANGE || hit_building) {
-    // Destroy blocks in bullet's direction
+  if (*bullet_distance >= MACHINE_GUN_RANGE || hit_building || 
+      (*machine_gun_bullet_x < 0 || *machine_gun_bullet_x >= COLS)) {
+    
     if (hit_building) {
+      // Destroy blocks with more thorough checking
       for (int i = 0; i < 5; i++) {
-        int destroy_x = *machine_gun_bullet_x + (i * *machine_gun_direction);
-        if (destroy_x >= 0 && destroy_x < COLS && world[destroy_x] > 0) {
-          // Check if we're actually hitting the building at this position
-          if (*machine_gun_bullet_y >= LINES - world[destroy_x] - 1) {
-            world[destroy_x]--;
-            *score += 5;
-          }
-        }
+	int destroy_x = check_x + (i * *machine_gun_direction);
+	if (destroy_x >= 0 && destroy_x < COLS) {
+	  // Completely remove the top block
+	  if (world[destroy_x] > 0) {
+	    world[destroy_x]--;
+	    *score += 5;
+	    // Redraw the building to show destruction
+	    if (has_colors()) attron(COLOR_PAIR(BUILDING_COLOR));
+	    mvprintw(LINES - world[destroy_x] - 2, destroy_x, " ");
+	    if (has_colors()) attroff(COLOR_PAIR(BUILDING_COLOR));
+	  }
+	}
       }
-      
-      // Visual feedback
-      for (int i = 0; i < 5; i++) {
-        int effect_x = *machine_gun_bullet_x + (i * *machine_gun_direction);
-        if (effect_x >= 0 && effect_x < COLS) {
-          if (has_colors()) {
-            attron(COLOR_PAIR(BOMB_COLOR) | A_BLINK);
-          }
-          mvprintw(*machine_gun_bullet_y, effect_x, "X");
-          if (has_colors()) {
-            attroff(COLOR_PAIR(BOMB_COLOR) | A_BLINK);
-          }
-        }
-      }
+      destruction_frame = 1; // Skip collision check next frame
       refresh();
-      nanosleep(&(struct timespec){0, 100000000L}, NULL);
+      nanosleep(&(struct timespec){0, 100000000L}, NULL); // Show explosion briefly
     }
     *machine_gun_active = 0;
   }
