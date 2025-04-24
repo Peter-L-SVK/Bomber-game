@@ -439,39 +439,43 @@ void handle_machine_gun(int* machine_gun_active, int* machine_gun_bullet_x, int*
   }
   
   // Check for hits or max range
-  if (*bullet_distance >= MACHINE_GUN_RANGE || 
-      (*machine_gun_bullet_x >= 0 && *machine_gun_bullet_x < COLS && 
-       *machine_gun_bullet_y >= LINES - world[*machine_gun_bullet_x] - 1)) {
-    
-    // Hit detection and damage logic
-    if (*machine_gun_bullet_x >= 0 && *machine_gun_bullet_x < COLS && 
-	*machine_gun_bullet_y >= LINES - world[*machine_gun_bullet_x] - 1) {
-      if (world[*machine_gun_bullet_x] > 0) {
-	// Destroy blocks in bullet's direction
-	for (int i = 0; i < 5; i++) {
-	  int destroy_x = *machine_gun_bullet_x + (i * *machine_gun_direction);
-	  if (destroy_x >= 0 && destroy_x < COLS && world[destroy_x] > 0) {
-	    world[destroy_x]--;
-	    *score += 5;
-	  }
-	}
-        
-	// Visual feedback
-	for (int i = 0; i < 5; i++) {
-	  int effect_x = *machine_gun_bullet_x + (i * *machine_gun_direction);
-	  if (effect_x >= 0 && effect_x < COLS) {
-	    if (has_colors()) {
-	      attron(COLOR_PAIR(BOMB_COLOR) | A_BLINK);
-	    }
-	    mvprintw(*machine_gun_bullet_y, effect_x, "X");
-	    if (has_colors()) {
-	      attroff(COLOR_PAIR(BOMB_COLOR) | A_BLINK);
-	    }
-	  }
-	}
-	refresh();
-	nanosleep(&(struct timespec){0, 100000000L}, NULL);
+  int hit_building = 0;
+  if (*machine_gun_bullet_x >= 0 && *machine_gun_bullet_x < COLS) {
+    int building_height = world[*machine_gun_bullet_x];
+    if (building_height > 0 && *machine_gun_bullet_y >= LINES - building_height - 1) {
+      hit_building = 1;
+    }
+  }
+  
+  if (*bullet_distance >= MACHINE_GUN_RANGE || hit_building) {
+    // Destroy blocks in bullet's direction
+    if (hit_building) {
+      for (int i = 0; i < 5; i++) {
+        int destroy_x = *machine_gun_bullet_x + (i * *machine_gun_direction);
+        if (destroy_x >= 0 && destroy_x < COLS && world[destroy_x] > 0) {
+          // Check if we're actually hitting the building at this position
+          if (*machine_gun_bullet_y >= LINES - world[destroy_x] - 1) {
+            world[destroy_x]--;
+            *score += 5;
+          }
+        }
       }
+      
+      // Visual feedback
+      for (int i = 0; i < 5; i++) {
+        int effect_x = *machine_gun_bullet_x + (i * *machine_gun_direction);
+        if (effect_x >= 0 && effect_x < COLS) {
+          if (has_colors()) {
+            attron(COLOR_PAIR(BOMB_COLOR) | A_BLINK);
+          }
+          mvprintw(*machine_gun_bullet_y, effect_x, "X");
+          if (has_colors()) {
+            attroff(COLOR_PAIR(BOMB_COLOR) | A_BLINK);
+          }
+        }
+      }
+      refresh();
+      nanosleep(&(struct timespec){0, 100000000L}, NULL);
     }
     *machine_gun_active = 0;
   }
