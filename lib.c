@@ -398,6 +398,156 @@ void pause_game(const char* fortune_msg, int* scroll_pos) {
   flushinp(); // Clear buffer after exiting
 }
 
+void handle_bomber_movement(int* bomber_x, int* bomber_y, int* bomber_dx, int* game_over, int* crash_reason, int world[]) {
+  *bomber_x += *bomber_dx;
+  if (*bomber_x >= COLS - 4 || *bomber_x <= 0) {
+    *bomber_dx *= -1;
+    (*bomber_y)++;
+  }
+  
+  // Check for collision
+  int collision_x = (*bomber_dx > 0) ? *bomber_x + 3 : *bomber_x - 1;
+  if (collision_x >= 0 && collision_x < COLS && 
+      *bomber_y >= LINES - world[collision_x] - 1) {
+    *crash_reason = 1; // Building collision
+    *game_over = 1;
+  }
+}
+
+void handle_machine_gun(int* machine_gun_active, int* machine_gun_bullet_x, int* machine_gun_bullet_y, 
+			int* bullet_distance, int* machine_gun_direction, int world[], int* score) {
+  if (!*machine_gun_active) return;
+  
+  // Erase previous bullet if within bounds
+  if (*machine_gun_bullet_x >= 0 && *machine_gun_bullet_x < COLS) {
+    mvprintw(*machine_gun_bullet_y, *machine_gun_bullet_x, " ");
+  }
+  
+  // Move bullet forward by 2 positions for faster movement
+  *machine_gun_bullet_x += *machine_gun_direction * 2;
+  *bullet_distance += 2;
+  
+  // Draw new position if within bounds
+  if (*machine_gun_bullet_x >= 0 && *machine_gun_bullet_x < COLS) {
+    if (has_colors()) {
+      attron(COLOR_PAIR(BOMB_COLOR));
+    }
+    mvprintw(*machine_gun_bullet_y, *machine_gun_bullet_x, "-");
+    if (has_colors()) {
+      attroff(COLOR_PAIR(BOMB_COLOR));
+    }
+  }
+  
+  // Check for hits or max range
+  if (*bullet_distance >= MACHINE_GUN_RANGE || 
+      (*machine_gun_bullet_x >= 0 && *machine_gun_bullet_x < COLS && 
+       *machine_gun_bullet_y >= LINES - world[*machine_gun_bullet_x] - 1)) {
+    
+    // Hit detection and damage logic
+    if (*machine_gun_bullet_x >= 0 && *machine_gun_bullet_x < COLS && 
+	*machine_gun_bullet_y >= LINES - world[*machine_gun_bullet_x] - 1) {
+      if (world[*machine_gun_bullet_x] > 0) {
+	// Destroy blocks in bullet's direction
+	for (int i = 0; i < 5; i++) {
+	  int destroy_x = *machine_gun_bullet_x + (i * *machine_gun_direction);
+	  if (destroy_x >= 0 && destroy_x < COLS && world[destroy_x] > 0) {
+	    world[destroy_x]--;
+	    *score += 5;
+	  }
+	}
+        
+	// Visual feedback
+	for (int i = 0; i < 5; i++) {
+	  int effect_x = *machine_gun_bullet_x + (i * *machine_gun_direction);
+	  if (effect_x >= 0 && effect_x < COLS) {
+	    if (has_colors()) {
+	      attron(COLOR_PAIR(BOMB_COLOR) | A_BLINK);
+	    }
+	    mvprintw(*machine_gun_bullet_y, effect_x, "X");
+	    if (has_colors()) {
+	      attroff(COLOR_PAIR(BOMB_COLOR) | A_BLINK);
+	    }
+	  }
+	}
+	refresh();
+	nanosleep(&(struct timespec){0, 100000000L}, NULL);
+      }
+    }
+    *machine_gun_active = 0;
+  }
+  nanosleep(&(struct timespec){0, 10000000L}, NULL);
+}
+
+void handle_bomb(Bomb* bomb, int world[], int* score) {
+  if (!bomb->active) return;
+  
+  if (has_colors()) {
+    attron(COLOR_PAIR(BOMB_COLOR));
+  }
+  mvprintw(bomb->y, bomb->x, "*");
+  if (has_colors()) {
+    attroff(COLOR_PAIR(BOMB_COLOR));
+  }
+  bomb->y++;
+  
+  if (bomb->y >= LINES - world[bomb->x] - 2) {
+    for (int dx = -DAMAGE_RADIUS; dx <= DAMAGE_RADIUS; dx++) {
+      int target_x = bomb->x + dx;
+      if (target_x >= 0 && target_x < COLS && world[target_x] > 0) {
+	world[target_x]--;
+	*score += 10;
+      }
+    }
+    bomb->active = 0;
+  }
+}
+
+int draw_game_state(int world[], int bomber_x, int bomber_y, int bomber_dx,
+		    const char* player_name, int score, int shots,
+		    const char* fortune_msg, int scroll_pos) {  
+  erase();
+  
+  // Draw city
+  int city_destroyed = 1;
+  for (int x = 0; x < COLS; x++) {
+    if (world[x] > 0) {
+      city_destroyed = 0;
+      for (int y = 0; y < world[x]; y++) {
+	if (has_colors()) {
+	  attron(COLOR_PAIR(BUILDING_COLOR));
+	}
+	mvprintw(LINES - y - 2, x, "#");
+	if (has_colors()) {
+	  attroff(COLOR_PAIR(BUILDING_COLOR));
+	}
+      }
+    }
+  }
+  
+  // Draw bomber
+  if (has_colors()) {
+    attron(COLOR_PAIR(BOMBER_COLOR));
+  }
+  mvprintw(bomber_y, bomber_x, bomber_dx > 0 ? "^==-" : "-==^");
+  if (has_colors()) {
+    attroff(COLOR_PAIR(BOMBER_COLOR));
+  }
+  
+  // Draw status line
+  if (has_colors()) {
+    attron(COLOR_PAIR(STATUS_COLOR));
+  }
+  mvprintw(0, 0, "Player: %s  Score: %d  Ammo: %d", player_name, score, shots);
+  if (has_colors()) {
+    attroff(COLOR_PAIR(STATUS_COLOR));
+  }
+  
+  show_scrolling_message(fortune_msg, scroll_pos, LINES-1);
+  refresh();
+  
+  return city_destroyed; 
+}
+
 void end_game_pause() {
   struct timespec ts = { .tv_sec = END_GAME_PAUSE, .tv_nsec = 0 };
   nanosleep(&ts, NULL);

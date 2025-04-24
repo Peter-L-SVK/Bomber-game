@@ -24,12 +24,12 @@ int main() {
     if (can_change_color()) {
       init_color(BACKGROUND_COLOR, 1000, 1000, 1000);
     }
-    init_pair(HELP_COLOR, COLOR_CYAN, BACKGROUND_COLOR);
     init_pair(BOMBER_COLOR, COLOR_BLUE, BACKGROUND_COLOR);      // Dark blue bomber
     init_pair(BUILDING_COLOR, COLOR_RED, BACKGROUND_COLOR);     // Red buildings
     init_pair(BOMB_COLOR, COLOR_BLACK, BACKGROUND_COLOR);       // Black bomb
-    init_pair(TEXT_COLOR, COLOR_BLACK, BACKGROUND_COLOR);       // White text
+    init_pair(TEXT_COLOR, COLOR_BLACK, BACKGROUND_COLOR);       // Black text
     init_pair(PINK_TEXT_COLOR, COLOR_MAGENTA, BACKGROUND_COLOR);  // Pink text
+    init_pair(STATUS_COLOR, COLOR_GREEN, BACKGROUND_COLOR);     //Green top line text
 
     // Set the background color for the whole screen
     bkgd(COLOR_PAIR(TEXT_COLOR)); 
@@ -89,164 +89,29 @@ int main() {
   int bullet_distance = 0;       
   int machine_gun_direction = 1;  // 1 for right, -1 for left
   
-  
   struct timespec ts_frame = { .tv_sec = 0, .tv_nsec = 60000000L };
   struct timespec ts_bomb = { .tv_sec = 0, .tv_nsec = 20000000L };
   
   while (!game_over && !win) {
     if (!paused) {
-      erase();
-      
-      int city_destroyed = 1;
-      for (int x = 0; x < COLS; x++) {
-	if (world[x] > 0) {
-	  city_destroyed = 0;
-	  for (int y = 0; y < world[x]; y++) {
-	    if (has_colors()) {
-	      attron(COLOR_PAIR(BUILDING_COLOR));
-	    }
-	    mvprintw(LINES - y - 2, x, "#");
-	    if (has_colors()) {
-	      attroff(COLOR_PAIR(BUILDING_COLOR));
-	    }
-	  }
-	}
-      }
+      int city_destroyed = draw_game_state(world, bomber_x, bomber_y, bomber_dx,
+					   player_name, score, shots, fortune_msg, scroll_pos);
       if (city_destroyed) {
 	win = 1;
-	break;
       }
+      handle_bomber_movement(&bomber_x, &bomber_y, &bomber_dx, &game_over, &crash_reason, world);
       
-      bomber_x += bomber_dx;
-      if (bomber_x >= COLS - 4 || bomber_x <= 0) {
-	bomber_dx *= -1;
-	bomber_y++;
-      }
-      
-      if (has_colors()) {
-	attron(COLOR_PAIR(BOMBER_COLOR));
-      }
-      mvprintw(bomber_y, bomber_x, bomber_dx > 0 ? "^==-" : "-==^");
-      if (has_colors()) {
-	attroff(COLOR_PAIR(BOMBER_COLOR));
-      }
-      
-      int collision_x = bomber_x;
-      if (bomber_dx > 0) { // Moving right
-	collision_x += 3;
-      } else { // Moving left
-	collision_x -= 1;
-      }
-      
-      if (collision_x >= 0 && collision_x < COLS && 
-	  bomber_y >= LINES - world[collision_x] - 1) {
-	// Visual feedback before ending
-	for (int i = 0; i < 3; i++) {
-	  attron(A_BLINK | COLOR_PAIR(BUILDING_COLOR));
-	  mvprintw(bomber_y, bomber_x, bomber_dx > 0 ? "^==-" : "-==^");
-	  refresh();
-	  nanosleep(&(struct timespec){0, 200000000L}, NULL);
-	  attroff(A_BLINK | COLOR_PAIR(BUILDING_COLOR));
-	}
-	crash_reason = 1; // Building collision
-	game_over = 1;
-	break;
-      }
-
       if (machine_gun_active) {
-	// Erase previous bullet if within bounds
-	if (machine_gun_bullet_x >= 0 && machine_gun_bullet_x < COLS) {
-	  mvprintw(machine_gun_bullet_y, machine_gun_bullet_x, " ");
-	}
-	
-	// Move bullet forward by 2 positions for faster movement
-	machine_gun_bullet_x += machine_gun_direction * 2;
-	bullet_distance += 2;
-	
-	// Draw new position if within bounds
-	if (machine_gun_bullet_x >= 0 && machine_gun_bullet_x < COLS) {
-	  if (has_colors()) {
-            attron(COLOR_PAIR(BOMB_COLOR));
-	  }
-	  mvprintw(machine_gun_bullet_y, machine_gun_bullet_x, "-");
-	  if (has_colors()) {
-            attroff(COLOR_PAIR(BOMB_COLOR));
-	  }
-	}
-	
-	// Check for hits or max range
-	if (bullet_distance >= MACHINE_GUN_RANGE || 
-	    (machine_gun_bullet_x >= 0 && machine_gun_bullet_x < COLS && 
-	     machine_gun_bullet_y >= LINES - world[machine_gun_bullet_x] - 1)) {
-	  
-	  // Erase bullet if it's still on screen
-	  if (machine_gun_bullet_x >= 0 && machine_gun_bullet_x < COLS) {
-            mvprintw(machine_gun_bullet_y, machine_gun_bullet_x, " ");
-	  }
-	  
-	  // Hit detection
-	  if (machine_gun_bullet_x >= 0 && machine_gun_bullet_x < COLS && 
-	      machine_gun_bullet_y >= LINES - world[machine_gun_bullet_x] - 1) {
-            if (world[machine_gun_bullet_x] > 0) {
-	      // Destroy 5 blocks in bullet's direction (hit block + 4 more)
-	      for (int i = 0; i < 5; i++) {
-		int destroy_x = machine_gun_bullet_x + (i * machine_gun_direction);
-		if (destroy_x >= 0 && destroy_x < COLS && world[destroy_x] > 0) {
-		  world[destroy_x]--;
-		  score += 5; // Score for each destroyed block
-		}
-	      }
-              
-	      // Visual feedback
-	      for (int i = 0; i < 5; i++) {
-		int effect_x = machine_gun_bullet_x + (i * machine_gun_direction);
-		if (effect_x >= 0 && effect_x < COLS) {
-		  if (has_colors()) {
-		    attron(COLOR_PAIR(BOMB_COLOR) | A_BLINK);
-		  }
-		  mvprintw(machine_gun_bullet_y, effect_x, "X");
-		  if (has_colors()) {
-		    attroff(COLOR_PAIR(BOMB_COLOR) | A_BLINK);
-		  }
-		}
-	      }
-	      refresh();
-	      nanosleep(&(struct timespec){0, 100000000L}, NULL); // 0.1s hit effect
-            }
-	  }
-	  machine_gun_active = 0;
-	}
-	// Very short delay for visible but fast movement
-	nanosleep(&(struct timespec){0, 10000000L}, NULL); // 10ms delay
+	handle_machine_gun(&machine_gun_active, &machine_gun_bullet_x, &machine_gun_bullet_y,
+			   &bullet_distance, &machine_gun_direction, world, &score);
       }
       
       if (bomb.active) {
-	if (has_colors()) {
-	  attron(COLOR_PAIR(BOMB_COLOR));
-	}
-	mvprintw(bomb.y, bomb.x, "*");
-	if (has_colors()) {
-	  attroff(COLOR_PAIR(BOMB_COLOR));
-	}
-	bomb.y++;
-	
-	if (bomb.y >= LINES - world[bomb.x] - 2) {
-	  for (int dx = -DAMAGE_RADIUS; dx <= DAMAGE_RADIUS; dx++) {
-	    int target_x = bomb.x + dx;
-	    if (target_x >= 0 && target_x < COLS && world[target_x] > 0) {
-	      world[target_x]--;
-	      score += 10;
-	    }
-	  }
-	  bomb.active = 0;
-	}
+	handle_bomb(&bomb, world, &score);
 	nanosleep(&ts_bomb, NULL);
       }
       
-      mvprintw(0, 0, "Player: %s  Score: %d  Ammo: %d", player_name, score, shots);
-      show_scrolling_message(fortune_msg, scroll_pos, LINES-1);
-      scroll_pos ++; 
-      refresh();
+      scroll_pos++;
     }
     
     int ch = getch();

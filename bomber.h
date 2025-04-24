@@ -16,7 +16,7 @@
 #include <unistd.h>
 #include <string.h>
  
-#define DAMAGE_RADIUS 3
+#define DAMAGE_RADIUS 2
 #define BOMB_KEY KEY_DOWN 
 #define PAUSE_KEY 'p'
 #define HELP_KEY 'h'
@@ -31,12 +31,11 @@
 #define BUILDING_COLOR 2
 #define BOMB_COLOR 3
 #define TEXT_COLOR 4
+#define STATUS_COLOR 6 
 #define BACKGROUND_COLOR COLOR_WHITE
 #define PINK_TEXT_COLOR 5
 #define MAX_NAME_LENGTH 20
 #define MAX_SCORES 10
-#define HELP_COLOR 6 
-#define HELP_DELAY 300000000L  // 300ms for visual effects
 
 typedef struct {
     int x, y;
@@ -65,5 +64,10 @@ void display_scores(HighScore scores[]);
 void ensure_score_file();
 void get_player_name(char* name);
 void show_info_screen(const char* fortune_msg, int* scroll_pos);
-
+void handle_bomber_movement(int* bomber_x, int* bomber_y, int* bomber_dx, int* game_over, int* crash_reason, int world[]);
+void handle_machine_gun(int* machine_gun_active, int* machine_gun_bullet_x, int* machine_gun_bullet_y, 
+			int* bullet_distance, int* machine_gun_direction, int world[], int* score);
+void handle_bomb(Bomb* bomb, int world[], int* score);
+int draw_game_state(int world[], int bomber_x, int bomber_y, int bomber_dx, const char* player_name,
+		    int score, int shots, const char* fortune_msg, int scroll_pos);
 #endif
