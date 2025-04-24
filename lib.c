@@ -387,10 +387,10 @@ void pause_game(const char* fortune_msg, int* scroll_pos) {
   mvprintw(LINES/2+1, COLS/2-10, "Press P to continue");
   show_scrolling_message(fortune_msg, *scroll_pos, LINES-1);
   refresh();
-
   
-    int ch = getch();
-    if (ch == PAUSE_KEY || ch == PAUSE_KEY-32) {
+  
+  int ch = getch();
+  if (ch == PAUSE_KEY || ch == PAUSE_KEY-32) {
     (*scroll_pos)++;
     show_scrolling_message(fortune_msg, *scroll_pos, LINES-1);
     refresh();
@@ -399,45 +399,78 @@ void pause_game(const char* fortune_msg, int* scroll_pos) {
   flushinp(); // Clear buffer after exiting
 }
 
-void handle_bomber_movement(int* bomber_x, int* bomber_y, int* bomber_dx, int* game_over, int* crash_reason, int world[]) {
-  if (destruction_frame > 0) {
-    destruction_frame--;
-    return; // Skip collision check this frame
-  }
+void debug_crash_message(int y, const char* message) {
+  (void)y;  
+  mvprintw(2, 0, "DEBUG CRASH: %s", message);
+  refresh();
   
-  *bomber_x += *bomber_dx;
-  
-  // Handle screen edge bouncing
-  if (*bomber_x >= COLS - 4 || *bomber_x <= 0) {
-    *bomber_dx *= -1;
-    (*bomber_y)++;
-  }
-  
-  // Check for collision - more precise points based on bomber shape
-  int collision_points[6] = {
-    *bomber_x + (*bomber_dx > 0 ? 3 : 0),  // Front of bomber (direction-dependent)
-    *bomber_x + 1,                         // Left engine
-    *bomber_x + 2,                         // Cockpit
-    *bomber_x + 3,                         // Right engine
-    *bomber_x,                             // Nose
-    *bomber_x + 4                          // Tail
-  };
-  
-  for (int i = 0; i < 6; i++) {
-    int check_x = collision_points[i];
-    // Only check collision if the point is within screen bounds
-    if (check_x >= 0 && check_x < COLS) {
-      // Calculate the top of the building at this x position
-      int building_top = LINES - world[check_x] - 1;
-      // Check if bomber's y position is at or below building top
-      if (*bomber_y >= building_top  && world[check_x] > 0) {
-	*crash_reason = 1; // Building collision
-	*game_over = 1;
-	break;
-      }
-    }
-  }
+  // Wait for keypress or 10 seconds timeout
+  timeout(10000);  // 10 second timeout
+  getch();
+  timeout(0);      // Reset to non-blocking
 }
+
+void handle_bomber_movement(int* bomber_x, int* bomber_y, int* bomber_dx, int* game_over, int* crash_reason, int world[]) {
+    if (destruction_frame > 0) {
+        destruction_frame--;
+        return;
+    }
+
+    // Apply movement first
+    *bomber_x += *bomber_dx;
+
+    // Handle screen edges
+    if (*bomber_x >= COLS - 4) {
+        *bomber_dx = -1;
+        *bomber_x = COLS - 4;
+        if (*bomber_y < LINES - 2) {
+            (*bomber_y)++;
+        }
+    } 
+    else if (*bomber_x <= 0) {
+        *bomber_dx = 1;
+        *bomber_x = 0;
+        if (*bomber_y < LINES - 2) {
+            (*bomber_y)++;
+        }
+    }
+
+    // Collision detection - only check center and nose
+    int collision_points[] = {
+        *bomber_x + 2,  // Center
+        *bomber_x + (*bomber_dx > 0 ? 3 : 0)  // Front
+    };
+
+    for (int i = 0; i < 2; i++) {
+        int check_x = collision_points[i];
+        if (check_x >= 0 && check_x < COLS) {
+            int building_top = LINES - world[check_x] - 1;
+            
+            // Only crash if bomber is at or below building top
+            if (*bomber_y >= building_top && world[check_x] > 0) {
+	      *crash_reason = 1;
+	      *game_over = 1;
+
+	      //debugtool , for use remove commenting
+	      /*char crash_msg[100];
+	      /snprintf(crash_msg, sizeof(crash_msg), 
+	      /	       "BomberY:%d vs BldgTop:%d at X:%d (W:%d)", 
+	      /	       *bomber_y, building_top, check_x, world[check_x]);
+	      /debug_crash_message(2, crash_msg);
+	      */
+	      return;
+}
+        }
+    }
+
+    // DEBUG: Print position and building tops
+    /* mvprintw(1, 0, "Pos: %d,%d  BldgTops: %d,%d   ",  // Added spaces to clear previous output
+    /         *bomber_x, *bomber_y, 
+    /         LINES - world[*bomber_x+2] - 1,
+    /         LINES - world[*bomber_x+(*bomber_dx>0?3:0)] - 1);
+    */
+}
+
 void handle_machine_gun(int* machine_gun_active, int* machine_gun_bullet_x, int* machine_gun_bullet_y, 
 			int* bullet_distance, int* machine_gun_direction, int world[], int* score) {
   if (!*machine_gun_active) return;
@@ -550,6 +583,27 @@ int draw_game_state(int world[], int bomber_x, int bomber_y, int bomber_dx,
       }
     }
   }
+  
+  // DEBUG: Show collision points (temporary)
+  /*  if (1) {  // set to 0 to turn off
+  /    if (!has_colors() || COLOR_PAIRS < BOMB_COLOR) {
+  /     for (int i = 0; i < 2; i++) {
+  /   	  int cx = bomber_x + (i == 0 ? 2 : (bomber_dx > 0 ? 3 : 0));
+  /	  if (cx >= 0 && cx < COLS) {
+  /	    mvprintw(bomber_y, cx, "X");
+  /	  } 
+  /     }
+  /   } else { 
+  /     int points[] = {bomber_x+2, bomber_x+(bomber_dx>0?3:0), bomber_x+(bomber_dx>0?0:3)};
+  /     for (int i = 0; i < 3; i++) {
+  /	  if (points[i] >= 0 && points[i] < COLS) {
+  /	    attron(COLOR_PAIR(BOMB_COLOR));
+  /	    mvprintw(bomber_y, points[i], "X");
+  /	    attroff(COLOR_PAIR(BOMB_COLOR));
+  /	  }
+  /     }
+  /   }
+  /  } */
   
   // Draw bomber
   if (has_colors()) {

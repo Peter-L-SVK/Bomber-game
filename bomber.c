@@ -196,7 +196,20 @@ int main() {
   }
   mvprintw(LINES/2, COLS/2-4, win ? "WELL DONE!" : "GAME OVER!");
   mvprintw(LINES/2+1, COLS/2-8, "Score: %d", score);
-
+  
+  // Enhanced end screen display
+  if (!win) {
+    const char* crash_msg = crash_reason ? 
+      "Crashed into city!" : "Destroyed by own bomb!";
+    mvprintw(LINES/2+2, COLS/2-10, crash_msg);
+    
+    // Copy debug info to bottom of screen - this is dysplay for debugtool 
+    /*  char debug_line[COLS];
+    /   mvinnstr(2, 0, debug_line, COLS-1);
+    /   mvprintw(LINES-3, 0, "DEBUG: %s", debug_line);
+    */
+  }
+  
   // In end-game message
   if (!win) {
     const char* crash_msg = crash_reason ? 
