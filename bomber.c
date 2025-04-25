@@ -202,12 +202,13 @@ int main() {
     const char* crash_msg = crash_reason ? 
       "Crashed into city!" : "Destroyed by own bomb!";
     mvprintw(LINES/2+2, COLS/2-10, crash_msg);
-    
+
+#ifdef DEBUG
     // Copy debug info to bottom of screen - this is dysplay for debugtool 
-    /*  char debug_line[COLS];
-    /   mvinnstr(2, 0, debug_line, COLS-1);
-    /   mvprintw(LINES-3, 0, "DEBUG: %s", debug_line);
-    */
+    char debug_line[COLS];
+    mvinnstr(2, 0, debug_line, COLS-1);
+    mvprintw(LINES-3, 0, "DEBUG: %s", debug_line);
+#endif
   }
   
   // In end-game message

@@ -3,6 +3,14 @@ CC = gcc
 CFLAGS = -Wall -Wextra -std=c11 -D_POSIX_C_SOURCE=200809L
 LDFLAGS = -lncurses
 
+# Debug configuration
+DEBUG ?= 0
+ifeq ($(DEBUG),1)
+    CFLAGS += -DDEBUG -g -O0
+else
+    CFLAGS += -O2
+endif
+
 # Source files
 SRC = bomber.c lib.c
 OBJ = $(SRC:.c=.o)
@@ -32,5 +40,13 @@ install: $(TARGET)
 run: $(TARGET)
 	./$(TARGET)
 
+# Debug build
+debug:
+	$(MAKE) DEBUG=1
+
+# Run with debug mode
+run-debug: debug
+	./$(TARGET)
+
 # Phony targets
-.PHONY: all clean install run
+.PHONY: all clean install run debug run-debug

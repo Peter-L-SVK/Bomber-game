@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define min(a, b) ((a) < (b) ? (a) : (b))
 #define SCORE_FILE "bomber.scores"
 static int destruction_frame = 0;  // Shared between collision and gun handling
 
@@ -399,6 +400,7 @@ void pause_game(const char* fortune_msg, int* scroll_pos) {
   flushinp(); // Clear buffer after exiting
 }
 
+#ifdef DEBUG
 void debug_crash_message(int y, const char* message) {
   (void)y;  
   mvprintw(2, 0, "DEBUG CRASH: %s", message);
@@ -409,133 +411,142 @@ void debug_crash_message(int y, const char* message) {
   getch();
   timeout(0);      // Reset to non-blocking
 }
+#endif
 
-void handle_bomber_movement(int* bomber_x, int* bomber_y, int* bomber_dx, int* game_over, int* crash_reason, int world[]) {
-    if (destruction_frame > 0) {
-        destruction_frame--;
-        return;
+void handle_bomber_movement(int* bomber_x, int* bomber_y, int* bomber_dx,
+			    int* game_over, int* crash_reason, int world[]) {
+  if (destruction_frame > 0) {
+    destruction_frame--;
+    return;
+  }
+  
+  // Apply movement first
+  *bomber_x += *bomber_dx;
+  
+  // Enhanced edge detection and collision
+  int nose_x = *bomber_x + (*bomber_dx > 0 ? 3 : 0);
+  int is_at_bottom = (*bomber_y >= LINES - 2);
+  
+  // Check for collisions first before handling edges
+  if (is_at_bottom) {
+    // Special case for bottom line - only check nose collision with edge buildings
+    if ((*bomber_dx > 0 && nose_x >= COLS - 1 && world[COLS-1] > 0) ||
+	(*bomber_dx < 0 && nose_x <= 0 && world[0] > 0)) {
+      *crash_reason = 1;
+      *game_over = 1;
+      return;
     }
-
-    // Apply movement first
-    *bomber_x += *bomber_dx;
-
-    // Handle screen edges
-    if (*bomber_x >= COLS - 4) {
-        *bomber_dx = -1;
-        *bomber_x = COLS - 4;
-        if (*bomber_y < LINES - 2) {
-            (*bomber_y)++;
-        }
-    } 
-    else if (*bomber_x <= 0) {
-        *bomber_dx = 1;
-        *bomber_x = 0;
-        if (*bomber_y < LINES - 2) {
-            (*bomber_y)++;
-        }
+  } else {
+    // Normal collision detection when not at bottom
+    int collision_points[] = {nose_x, *bomber_x + 1, *bomber_x + 2};
+    for (int i = 0; i < 3; i++) {
+      int check_x = collision_points[i];
+      if (check_x >= 0 && check_x < COLS && world[check_x] > 0) {
+	int building_top = LINES - world[check_x] - 1;
+	if (*bomber_y >= building_top) {
+	  *crash_reason = 1;
+	  *game_over = 1;
+	  
+#ifdef DEBUG
+	  //debugtool , for use remove commenting
+	  char crash_msg[100];
+	  snprintf(crash_msg, sizeof(crash_msg), 
+		   "BomberY:%d vs BldgTop:%d at X:%d (W:%d)", 
+		   *bomber_y, building_top, check_x, world[check_x]);
+	  debug_crash_message(2, crash_msg);
+#endif
+	  
+	  return;
+	}
+      }
     }
-
-    // Collision detection - only check center and nose
-    int collision_points[] = {
-        *bomber_x + 2,  // Center
-        *bomber_x + (*bomber_dx > 0 ? 3 : 0)  // Front
-    };
-
-    for (int i = 0; i < 2; i++) {
-        int check_x = collision_points[i];
-        if (check_x >= 0 && check_x < COLS) {
-            int building_top = LINES - world[check_x] - 1;
-            
-            // Only crash if bomber is at or below building top
-            if (*bomber_y >= building_top && world[check_x] > 0) {
-	      *crash_reason = 1;
-	      *game_over = 1;
-
-	      //debugtool , for use remove commenting
-	      /*char crash_msg[100];
-	      /snprintf(crash_msg, sizeof(crash_msg), 
-	      /	       "BomberY:%d vs BldgTop:%d at X:%d (W:%d)", 
-	      /	       *bomber_y, building_top, check_x, world[check_x]);
-	      /debug_crash_message(2, crash_msg);
-	      */
-	      return;
-}
-        }
-    }
-
-    // DEBUG: Print position and building tops
-    /* mvprintw(1, 0, "Pos: %d,%d  BldgTops: %d,%d   ",  // Added spaces to clear previous output
-    /         *bomber_x, *bomber_y, 
-    /         LINES - world[*bomber_x+2] - 1,
-    /         LINES - world[*bomber_x+(*bomber_dx>0?3:0)] - 1);
-    */
+  }
+   // Handle screen edges (only if we didn't crash)
+  if (*bomber_x >= COLS - 4) {
+    *bomber_dx = -1;
+    *bomber_x = COLS - 4;
+    if (!is_at_bottom) (*bomber_y)++;
+  } 
+  else if (*bomber_x <= 0) {
+    *bomber_dx = 1;
+    *bomber_x = 0;
+    if (!is_at_bottom) (*bomber_y)++;
+  }
+#ifdef DEBUG
+  // DEBUG: Print position and building tops
+  mvprintw(1, 0, "Pos: %d,%d  BldgTops: %d,%d   ",  // Added spaces to clear previous output
+	   *bomber_x, *bomber_y, 
+	   LINES - world[*bomber_x+2] - 1,
+	   LINES - world[*bomber_x+(*bomber_dx>0?3:0)] - 1);
+  
+#endif
 }
 
 void handle_machine_gun(int* machine_gun_active, int* machine_gun_bullet_x, int* machine_gun_bullet_y, 
-            int* bullet_distance, int* machine_gun_direction, int world[], int* score) {
-    if (!*machine_gun_active) return;
-    
-    // Erase previous bullet if within bounds
-    if (*machine_gun_bullet_x >= 0 && *machine_gun_bullet_x < COLS) {
-        mvprintw(*machine_gun_bullet_y, *machine_gun_bullet_x, " ");
+			int* bullet_distance, int* machine_gun_direction, int world[], int* score) {
+  if (!*machine_gun_active) return;
+  
+  // Erase previous bullet if within bounds
+  if (*machine_gun_bullet_x >= 0 && *machine_gun_bullet_x < COLS) {
+    mvprintw(*machine_gun_bullet_y, *machine_gun_bullet_x, " ");
+  }
+  
+  // Move bullet forward at slower speed (1 position per frame)
+  *machine_gun_bullet_x += *machine_gun_direction;
+  *bullet_distance += 1;
+  
+  // Draw new position if within bounds
+  if (*machine_gun_bullet_x >= 0 && *machine_gun_bullet_x < COLS) {
+    if (has_colors()) {
+      attron(COLOR_PAIR(BOMB_COLOR));
     }
-    
-    // Move bullet forward at slower speed (1 position per frame)
-    *machine_gun_bullet_x += *machine_gun_direction;
-    *bullet_distance += 1;
-    
-    // Draw new position if within bounds
-    if (*machine_gun_bullet_x >= 0 && *machine_gun_bullet_x < COLS) {
-        if (has_colors()) {
-            attron(COLOR_PAIR(BOMB_COLOR));
-        }
-        mvprintw(*machine_gun_bullet_y, *machine_gun_bullet_x, "-");
-        if (has_colors()) {
-            attroff(COLOR_PAIR(BOMB_COLOR));
-        }
+    mvprintw(*machine_gun_bullet_y, *machine_gun_bullet_x, "-");
+    if (has_colors()) {
+      attroff(COLOR_PAIR(BOMB_COLOR));
     }
-    
-    // Check for hits along the bullet's path
-    int hit_building = 0;
-    int check_x = *machine_gun_bullet_x;
-    
-    // Check current position and previous position to prevent skipping
-    for (int i = 0; i <= 1; i++) {
-        int test_x = check_x - (i * *machine_gun_direction);
-        if (test_x >= 0 && test_x < COLS) {
-            if (world[test_x] > 0 && *machine_gun_bullet_y >= LINES - world[test_x] - 1) {
-                hit_building = 1;
-                check_x = test_x; // Use the actual hit position
-                break;
-            }
-        }
+  }
+  
+  // Check for hits along the bullet's path
+  int hit_building = 0;
+  int check_x = *machine_gun_bullet_x;
+  
+  // Check current position and previous position to prevent skipping
+  for (int i = 0; i <= 1; i++) {
+    int test_x = check_x - (i * *machine_gun_direction);
+    if (test_x >= 0 && test_x < COLS) {
+      if (world[test_x] > 0 && *machine_gun_bullet_y >= LINES - world[test_x] - 1) {
+	hit_building = 1;
+	check_x = test_x; // Use the actual hit position
+	break;
+      }
     }
+  }
+  
+  if (*bullet_distance >= MACHINE_GUN_RANGE || hit_building || 
+      (*machine_gun_bullet_x < 0 || *machine_gun_bullet_x >= COLS)) {
     
-    if (*bullet_distance >= MACHINE_GUN_RANGE || hit_building || 
-        (*machine_gun_bullet_x < 0 || *machine_gun_bullet_x >= COLS)) {
-        
-        if (hit_building) {
-            // Destroy blocks in a line
-            for (int i = 0; i < 5; i++) {
-                int destroy_x = check_x + (i * *machine_gun_direction);
-                if (destroy_x >= 0 && destroy_x < COLS) {
-                    if (world[destroy_x] > 0) {
-                        world[destroy_x]--;
-                        *score += 5;
-                        // Redraw the building to show destruction
-                        if (has_colors()) attron(COLOR_PAIR(BUILDING_COLOR));
-                        mvprintw(LINES - world[destroy_x] - 2, destroy_x, " ");
-                        if (has_colors()) attroff(COLOR_PAIR(BUILDING_COLOR));
-                    }
-                }
-            }
-            destruction_frame = 1;
-            refresh();
-            nanosleep(&(struct timespec){0, 100000000L}, NULL);
-        }
-        *machine_gun_active = 0;
+    if (hit_building) {
+      // Destroy blocks in a line (5 blocks total)
+      for (int i = -2; i <= 2; i++) {
+	int destroy_x = check_x + i;
+	if (destroy_x >= 0 && destroy_x < COLS) {
+	  if (world[destroy_x] > 0) {
+	    world[destroy_x]--;
+	    *score += 5;
+	    // Clear the destroyed block
+	    if (has_colors()) attron(COLOR_PAIR(BUILDING_COLOR));
+	    mvprintw(LINES - world[destroy_x] - 2, destroy_x, " ");
+	    if (has_colors()) attroff(COLOR_PAIR(BUILDING_COLOR));
+	  }
+	}
+      }
+      destruction_frame = 1;
+      refresh();
+      nanosleep(&(struct timespec){0, 100000000L}, NULL);
     }
-    nanosleep(&(struct timespec){0, 10000000L}, NULL);
+    *machine_gun_active = 0;
+  }
+  nanosleep(&(struct timespec){0, 10000000L}, NULL);
 }
 
 void handle_bomb(Bomb* bomb, int world[], int* score) {
@@ -566,12 +577,14 @@ int draw_game_state(int world[], int bomber_x, int bomber_y, int bomber_dx,
 		    const char* player_name, int score, int shots,
 		    const char* fortune_msg, int scroll_pos) {  
   erase();
-  
+  mvprintw(1, 0, "Last block at: %d,%d  Bomber at: %d,%d", 
+    COLS-1, LINES - world[COLS-1] - 2, bomber_x, bomber_y);
   // Draw city
   int city_destroyed = 1;
   for (int x = 0; x < COLS; x++) {
     if (world[x] > 0) {
       city_destroyed = 0;
+      // Only draw up to the current building height
       for (int y = 0; y < world[x]; y++) {
 	if (has_colors()) {
 	  attron(COLOR_PAIR(BUILDING_COLOR));
@@ -581,39 +594,60 @@ int draw_game_state(int world[], int bomber_x, int bomber_y, int bomber_dx,
 	  attroff(COLOR_PAIR(BUILDING_COLOR));
 	}
       }
+      // Clear any remaining blocks above current height
+      for (int y = world[x]; y < LINES-2; y++) {
+	mvprintw(LINES - y - 2, x, " ");
+      }
+    } else {
+      // Clear entire column if building is destroyed
+      for (int y = 0; y < LINES-2; y++) {
+	mvprintw(LINES - y - 2, x, " ");
+      }
     }
   }
-  
+
+#ifdef DEBUG
   // DEBUG: Show collision points (temporary)
-  /*  if (1) {  // set to 0 to turn off
-  /    if (!has_colors() || COLOR_PAIRS < BOMB_COLOR) {
-  /     for (int i = 0; i < 2; i++) {
-  /   	  int cx = bomber_x + (i == 0 ? 2 : (bomber_dx > 0 ? 3 : 0));
-  /	  if (cx >= 0 && cx < COLS) {
-  /	    mvprintw(bomber_y, cx, "X");
-  /	  } 
-  /     }
-  /   } else { 
-  /     int points[] = {bomber_x+2, bomber_x+(bomber_dx>0?3:0), bomber_x+(bomber_dx>0?0:3)};
-  /     for (int i = 0; i < 3; i++) {
-  /	  if (points[i] >= 0 && points[i] < COLS) {
-  /	    attron(COLOR_PAIR(BOMB_COLOR));
-  /	    mvprintw(bomber_y, points[i], "X");
-  /	    attroff(COLOR_PAIR(BOMB_COLOR));
-  /	  }
-  /     }
-  /   }
-  /  } */
+  if (1) {  // set to 0 to turn off
+    if (!has_colors() || COLOR_PAIRS < BOMB_COLOR) {
+      for (int i = 0; i < 2; i++) {
+	int cx = bomber_x + (i == 0 ? 2 : (bomber_dx > 0 ? 3 : 0));
+	if (cx >= 0 && cx < COLS) {
+	  mvprintw(bomber_y, cx, "X");
+	} 
+      }
+    } else { 
+      int points[] = {bomber_x+2, bomber_x+(bomber_dx>0?3:0), bomber_x+(bomber_dx>0?0:3)};
+      for (int i = 0; i < 3; i++) {
+	if (points[i] >= 0 && points[i] < COLS) {
+	  attron(COLOR_PAIR(BOMB_COLOR));
+	  mvprintw(bomber_y, points[i], "X");
+	  attroff(COLOR_PAIR(BOMB_COLOR));
+	}
+      }
+    }
+#endif
   
   // Draw bomber
   if (has_colors()) {
     attron(COLOR_PAIR(BOMBER_COLOR));
   }
   mvprintw(bomber_y, bomber_x, bomber_dx > 0 ? "^==-" : "-==^");
+
+#ifdef DEBUG
+  // Show collision points (remove in final version)
+  if (has_colors()) attron(COLOR_PAIR(BOMB_COLOR));
+  mvprintw(bomber_y, bomber_x + (bomber_dx > 0 ? 3 : 0), "N"); // Nose
+  mvprintw(bomber_y, bomber_x + 1, "L"); // Left collision point
+  mvprintw(bomber_y, bomber_x + 2, "C"); // Center collision point
+  if (has_colors()) attroff(COLOR_PAIR(BOMB_COLOR));
+#endif 
+
   if (has_colors()) {
     attroff(COLOR_PAIR(BOMBER_COLOR));
   }
   
+
   // Draw status line
   if (has_colors()) {
     attron(COLOR_PAIR(STATUS_COLOR));

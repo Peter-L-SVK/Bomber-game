@@ -40,6 +40,12 @@ A terminal-based bombing game written in C using ncurses. Control a plane that d
 make
 ./bomber
 ```
+For debugging:
+```bash
+make DEBUG=1  # Force debug build
+make DEBUG=0  # Force release build
+```
+
 ## How to Play
 ### Controls
 - `Down Arrow` - Drop bomb (3x3 explosion)
